@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 
 	"github.com/kevidn/be-sipa/config"
@@ -13,7 +14,10 @@ import (
 )
 
 func main() {
-	godotenv.Load()
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Info: File .env tidak ditemukan, menggunakan variabel environment dari sistem cloud.")
+	}
 
 	config.InitDB()
 
