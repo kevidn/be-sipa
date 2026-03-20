@@ -26,8 +26,13 @@ func main() {
 
 	app := fiber.New()
 
+	allowOrigins := os.Getenv("FRONTEND_URL")
+	if allowOrigins == "" {
+		allowOrigins = "*"
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: os.Getenv("FRONTEND_URL"),
+		AllowOrigins: allowOrigins,
 		AllowHeaders: "Origin, Content-Type, Accept",
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
 	}))
