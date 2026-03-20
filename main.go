@@ -37,10 +37,10 @@ func main() {
 	app.Post("/api/login", handlers.Login)
 	app.Post("/api/register", handlers.Register)
 
-	port := os.Getenv("SERVER_PORT")
+	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
 	app.Listen(":" + port)
-}
+}
