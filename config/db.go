@@ -21,7 +21,12 @@ func InitDB() {
 		os.Getenv("DB_SSLMODE"),
 		os.Getenv("DB_TIMEZONE"),
 	)
-	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+
+	database, err := gorm.Open(postgres.New(postgres.Config{
+		DSN:                  dsn,
+		PreferSimpleProtocol: true,
+	}), &gorm.Config{})
+
 	if err != nil {
 		panic("Gagal terkoneksi ke database!")
 	}
