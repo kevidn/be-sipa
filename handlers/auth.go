@@ -8,8 +8,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/kevidn/be-sipa/config"
 	"github.com/kevidn/be-sipa/models"
+	"github.com/kevidn/be-sipa/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -125,5 +127,108 @@ func Login(c *fiber.Ctx) error {
 		"message": "Login berhasil",
 		"token":   t,
 		"data":    user,
+	})
+}
+
+func ForgotPassword(c *fiber.Ctx) error {
+	type ForgotInput struct {
+		Email string `json:"email"`
+	}
+	var input ForgotInput
+
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
+	}
+
+	var user models.User
+	if err := config.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
+		// Untuk keamanan, jangan beri tahu jika email tidak ada
+		return c.JSON(fiber.Map{"message": "Jika email terdaftar, tautan reset akan dikirim."})
+	}
+
+	token := uuid.New().String()
+	expiry := time.Now().UTC().Add(time.Hour * 1) // 1 jam - Menggunakan UTC
+
+	user.ResetPasswordToken = token
+	user.ResetPasswordExpires = &expiry
+
+	fmt.Printf("DEBUG: Saving token %s for user %s (Expires UTC: %v)\n", token, user.Email, expiry)
+	if err := config.DB.Save(&user).Error; err != nil {
+		fmt.Printf("DEBUG: Save error: %v\n", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memproses permintaan"})
+	}
+
+	frontendURL := os.Getenv("FRONTEND_URL")
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", frontendURL, token)
+
+	mailData := utils.MailData{
+		NamaLengkap: user.NamaLengkap,
+		ResetLink:   resetLink,
+	}
+
+	if err := utils.SendResetPasswordEmail(user.Email, mailData); err != nil {
+		fmt.Printf("SMTP Error: %v\n", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengirim email reset"})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Tautan reset kata sandi telah dikirim ke email Anda.",
+	})
+}
+
+func ResetPassword(c *fiber.Ctx) error {
+	type ResetInput struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	var input ResetInput
+
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
+	}
+
+	var user models.User
+	fmt.Printf("DEBUG: Looking for token: %s\n", input.Token)
+	if err := config.DB.Where("reset_password_token = ?", input.Token).First(&user).Error; err != nil {
+		fmt.Printf("DEBUG: Token not found: %v\n", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Tautan tidak valid atau telah kadaluarsa"})
+	}
+
+	now := time.Now().UTC()
+	fmt.Printf("DEBUG: Checking expiry. Now (UTC): %v, Expires (DB): %v\n", now, user.ResetPasswordExpires)
+
+	if user.ResetPasswordExpires == nil || now.After(*user.ResetPasswordExpires) {
+		fmt.Printf("DEBUG: Token expired. Now is after Expires.\n")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Tautan reset telah kadaluarsa"})
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), 10)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memproses kata sandi baru"})
+	}
+
+	// Gunakan Updates dengan map untuk memastikan field "" dan nil ikut terhapus
+	if err := config.DB.Model(&user).Updates(map[string]interface{}{
+		"password_hash":          string(hashedPassword),
+		"reset_password_token":   "",
+		"reset_password_expires": nil,
+	}).Error; err != nil {
+		fmt.Printf("DEBUG: Updates error: %v\n", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memperbarui kata sandi"})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Kata sandi berhasil diperbarui. Silakan masuk kembali.",
+	})
+}
+
+func Logout(c *fiber.Ctx) error {
+	// Untuk JWT stateless, logout biasanya ditangani di sisi klien dengan menghapus token.
+	// Endpoint ini bisa digunakan untuk logging atau invalidasi token di masa depan.
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Logout berhasil",
 	})
 }

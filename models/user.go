@@ -9,7 +9,9 @@ type User struct {
 	Username     string     `gorm:"type:varchar(50);uniqueIndex;not null" json:"username"`
 	PasswordHash string     `gorm:"type:char(60);not null" json:"-"` // json:"-" menyembunyikan password dari response API
 	NamaLengkap  string     `gorm:"type:varchar(150);not null" json:"nama_lengkap"`
-	Email        string     `gorm:"type:varchar(100);uniqueIndex;not null" json:"email"`
+	Email                string     `gorm:"type:varchar(100);uniqueIndex;not null" json:"email"`
+	ResetPasswordToken   string     `gorm:"type:varchar(255)" json:"-"`
+	ResetPasswordExpires *time.Time `gorm:"type:timestamp null" json:"-"`
 	Role         string     `gorm:"type:varchar(20);not null" json:"role"` // Enum: Mahasiswa, Dosen, Kaprodi, dll
 	IDUnitKerja  string     `gorm:"type:varchar(10)" json:"id_unit_kerja"`
 	StatusAkun   string     `gorm:"type:varchar(20);not null;default:'Aktif'" json:"status_akun"` // Enum: Aktif, Nonaktif, dll

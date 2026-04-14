@@ -33,7 +33,7 @@ func main() {
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: allowOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
 	}))
 
@@ -45,6 +45,9 @@ func main() {
 	// Auth routes
 	app.Post("/api/login", handlers.Login)
 	app.Post("/api/register", handlers.Register)
+	app.Post("/api/forgot-password", handlers.ForgotPassword)
+	app.Post("/api/reset-password", handlers.ResetPassword)
+	app.Post("/api/logout", handlers.Logout)
 
 	port := os.Getenv("PORT")
 	if port == "" {

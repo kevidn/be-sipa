@@ -33,4 +33,9 @@ func InitDB() {
 
 	fmt.Printf("✅ Terhubung ke database: %s\n", dbname)
 	DB = database
+
+	// Verifikasi kolom (Debug)
+	var columns []string
+	DB.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = 'users'").Scan(&columns)
+	fmt.Printf("DEBUG: Kolom di tabel users: %v\n", columns)
 }
