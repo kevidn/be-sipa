@@ -21,8 +21,8 @@ func main() {
 
 	config.InitDB()
 
-	// Auto-migrate schema: buat/update tabel users jika belum ada
-	config.DB.AutoMigrate(&models.User{})
+	// Auto-migrate schema
+	config.DB.AutoMigrate(&models.User{}, &models.Surat{})
 
 	app := fiber.New()
 
@@ -48,6 +48,10 @@ func main() {
 	app.Post("/api/forgot-password", handlers.ForgotPassword)
 	app.Post("/api/reset-password", handlers.ResetPassword)
 	app.Post("/api/logout", handlers.Logout)
+	
+	// Surat routes
+	app.Post("/api/surat", handlers.AuthMiddleware, handlers.SubmitSurat)
+	app.Get("/api/surat", handlers.AuthMiddleware, handlers.GetHistorySurat)
 
 	port := os.Getenv("PORT")
 	if port == "" {

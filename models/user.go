@@ -14,6 +14,8 @@ type User struct {
 	ResetPasswordExpires *time.Time `gorm:"type:timestamp null" json:"-"`
 	Role         string     `gorm:"type:varchar(20);not null" json:"role"` // Enum: Mahasiswa, Dosen, Kaprodi, dll
 	IDUnitKerja  string     `gorm:"type:varchar(10)" json:"id_unit_kerja"`
+	NIM          string     `gorm:"type:varchar(20)" json:"nim"`
+	ProgramStudi string     `gorm:"type:varchar(100)" json:"program_studi"`
 	StatusAkun   string     `gorm:"type:varchar(20);not null;default:'Aktif'" json:"status_akun"` // Enum: Aktif, Nonaktif, dll
 	LastLogin    *time.Time `gorm:"type:timestamp null" json:"last_login"`                        // Pakai pointer agar bisa menerima nilai NULL
 	CreatedAt    time.Time  `gorm:"autoCreateTime;type:timestamp;not null" json:"created_at"`
