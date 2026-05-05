@@ -12,9 +12,11 @@ type Surat struct {
 	JenisSurat  string    `gorm:"type:varchar(100);not null" json:"jenis_surat"`
 	Keperluan   string    `gorm:"type:text" json:"keperluan"`
 	Semester    string    `gorm:"type:varchar(20)" json:"semester"`
-	Status      string    `gorm:"type:varchar(20);not null;default:'Diproses'" json:"status"` // Diproses, Diterima Tendik, Selesai, Ditolak
+	Status      string    `gorm:"type:varchar(20);not null;default:'Diajukan'" json:"status"` // Diajukan, Diterima Tendik, Diproses, Selesai, Ditolak
 	FileUrl     string    `gorm:"type:varchar(255)" json:"file_url"`
 	Komentar    string    `gorm:"type:text" json:"komentar"`
+	DeadlineSLA *time.Time `gorm:"type:timestamp null" json:"deadline_sla"`
+	SlaStatus   string    `gorm:"type:varchar(20);default:'Aman'" json:"sla_status"` // Aman, Mendekati, Terlampaui
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }

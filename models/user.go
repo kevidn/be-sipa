@@ -21,6 +21,8 @@ type User struct {
 	CreatedAt    time.Time  `gorm:"autoCreateTime;type:timestamp;not null" json:"created_at"`
 	IsSlaMonitor bool       `gorm:"not null;default:false" json:"is_sla_monitor"`
 	PhoneNumber  string     `gorm:"type:varchar(20)" json:"phone_number"`
+	FailedLoginAttempts int    `gorm:"default:0" json:"-"`
+	LockedUntil         *time.Time `gorm:"type:timestamp null" json:"-"`
 }
 
 func (User) TableName() string {

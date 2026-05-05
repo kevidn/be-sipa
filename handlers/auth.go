@@ -22,10 +22,11 @@ type LoginInput struct {
 
 // RoleValid adalah daftar role yang diizinkan saat registrasi
 var RoleValid = map[string]bool{
-	"Mahasiswa": true,
-	"Dosen":     true,
-	"Kaprodi":   true,
-	"Tendik":    true,
+	"Mahasiswa":    true,
+	"Dosen":        true,
+	"Kaprodi":      true,
+	"Tendik":       true,
+	"Admin Sistem": true,
 }
 
 type RegisterInput struct {
@@ -91,17 +92,41 @@ func Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Username tidak ditemukan"})
 	}
 
+	// Check if account is locked
+	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+		timeLeft := time.Until(*user.LockedUntil).Minutes()
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": fmt.Sprintf("Akun terkunci. Silakan coba lagi dalam %.0f menit.", timeLeft),
+		})
+	}
+
 	if user.StatusAkun != "Aktif" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Akun Anda: " + user.StatusAkun})
 	}
 
 	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password))
 	if err != nil {
+		// Increment failed attempts
+		user.FailedLoginAttempts++
+		
+		if user.FailedLoginAttempts >= 5 {
+			unlockTime := time.Now().Add(15 * time.Minute)
+			user.LockedUntil = &unlockTime
+			user.FailedLoginAttempts = 0 // Reset after locking
+			config.DB.Save(&user)
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Terlalu banyak percobaan gagal. Akun dikunci selama 15 menit."})
+		}
+		
+		config.DB.Save(&user)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Password salah!"})
 	}
 
+	// Reset failed attempts on successful login
+	user.FailedLoginAttempts = 0
+	user.LockedUntil = nil
 	now := time.Now()
-	config.DB.Model(&user).Update("last_login", &now)
+	user.LastLogin = &now
+	config.DB.Save(&user)
 
 	claims := jwt.MapClaims{
 		"id_user":        user.IDUser,
