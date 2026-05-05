@@ -52,6 +52,8 @@ func main() {
 	// Surat routes
 	app.Post("/api/surat", handlers.AuthMiddleware, handlers.SubmitSurat)
 	app.Get("/api/surat", handlers.AuthMiddleware, handlers.GetHistorySurat)
+	app.Get("/api/surat/:id", handlers.AuthMiddleware, handlers.GetDetailSurat)
+	app.Put("/api/surat/:id/status", handlers.AuthMiddleware, handlers.UpdateStatusSurat)
 
 	port := os.Getenv("PORT")
 	if port == "" {
