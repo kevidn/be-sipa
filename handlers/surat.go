@@ -103,12 +103,41 @@ func GetHistorySurat(c *fiber.Ctx) error {
 	role := c.Locals("role").(string)
 
 	var surat []models.Surat
-	query := config.DB.Order("created_at DESC").Preload("User")
+	
+	sortBy := c.Query("sort", "created_at")
+	order := c.Query("order", "desc")
 
+	if strings.ToLower(order) != "asc" {
+		order = "desc"
+	}
+
+	dbSortCol := "surat_pengajuan.created_at"
+	switch sortBy {
+	case "nomor_surat":
+		dbSortCol = "surat_pengajuan.nomor_surat"
+	case "jenis_surat":
+		dbSortCol = "surat_pengajuan.jenis_surat"
+	case "status":
+		dbSortCol = "surat_pengajuan.status"
+	case "tanggal_masuk":
+		dbSortCol = "surat_pengajuan.created_at"
+	case "sla":
+		dbSortCol = "surat_pengajuan.deadline_sla"
+	case "prioritas":
+		dbSortCol = "surat_pengajuan.prioritas"
+	}
+
+	query := config.DB.Preload("User").Preload("Processor")
+	if sortBy == "mahasiswa" {
+		query = query.Joins("User").Order("User.nama_lengkap " + order)
+	} else {
+		query = query.Order(dbSortCol + " " + order)
+	}
 	// Jika mahasiswa, hanya lihat miliknya sendiri (BR-006)
 	if strings.ToLower(role) == "mahasiswa" {
 		query = query.Where("user_id = ?", userID)
 	}
+
 
 	if err := query.Find(&surat).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil data riwayat"})
@@ -146,7 +175,7 @@ func GetDetailSurat(c *fiber.Ctx) error {
 	role := c.Locals("role").(string)
 
 	var surat models.Surat
-	query := config.DB.Preload("User")
+	query := config.DB.Preload("User").Preload("Processor")
 
 	if err := query.First(&surat, id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Pengajuan tidak ditemukan"})
@@ -197,15 +226,24 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Pengajuan yang sudah Selesai tidak dapat diubah lagi"})
 	}
 
-	// Update Status & Komentar
+	// Update Status, Komentar, & Processor
+	processorID := c.Locals("id_user").(string)
 	updates := map[string]interface{}{
-		"status":   input.Status,
-		"komentar": input.Catatan,
+		"status":       input.Status,
+		"komentar":     input.Catatan,
+		"processor_id": processorID,
 	}
 
 	if err := config.DB.Model(&surat).Updates(updates).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memperbarui status"})
 	}
+
+	// Record Activity Log
+	keterangan := fmt.Sprintf("Memperbarui status pengajuan %s menjadi %s", surat.JenisSurat, input.Status)
+	if input.Status == "Ditolak" {
+		keterangan += fmt.Sprintf(" dengan alasan: %s", input.Catatan)
+	}
+	RecordLog(processorID, "Update Status", keterangan, "Berhasil", c.IP(), surat.NomorSurat)
 
 	// Kirim Email Notifikasi (REQ-FR020)
 	utils.SendStatusUpdateEmail(surat.User.Email, utils.MailData{
@@ -222,4 +260,32 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 		"data":    surat,
 	})
 }
+
+func GetDashboardStats(c *fiber.Ctx) error {
+	var totalAntrian, sedangDiproses, totalSelesai, slaTerlampaui, prioritasTinggi, dokumenLengkap int64
+
+	config.DB.Model(&models.Surat{}).Where("status = ?", "Diajukan").Count(&totalAntrian)
+	config.DB.Model(&models.Surat{}).Where("status IN ?", []string{"Diterima Tendik", "Diproses"}).Count(&sedangDiproses)
+	
+	config.DB.Model(&models.Surat{}).Where("status = ?", "Selesai").Count(&totalSelesai)
+	
+	config.DB.Model(&models.Surat{}).Where("sla_status = ? AND status NOT IN ('Selesai', 'Ditolak')", "Terlampaui").Count(&slaTerlampaui)
+
+	config.DB.Model(&models.Surat{}).Where("prioritas = ? AND status NOT IN ('Selesai', 'Ditolak')", "Tinggi").Count(&prioritasTinggi)
+	config.DB.Model(&models.Surat{}).Where("is_document_complete = ? AND status NOT IN ('Selesai', 'Ditolak')", true).Count(&dokumenLengkap)
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"total_antrian":    totalAntrian,
+			"sedang_diproses":  sedangDiproses,
+			"total_selesai":    totalSelesai,
+			"sla_terlampaui":   slaTerlampaui,
+			"prioritas_tinggi": prioritasTinggi,
+			"dokumen_lengkap":  dokumenLengkap,
+		},
+	})
+}
+
+
 

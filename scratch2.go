@@ -1,0 +1,29 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+
+	"github.com/kevidn/be-sipa/config"
+	"github.com/kevidn/be-sipa/models"
+	"github.com/joho/godotenv"
+)
+
+func main() {
+	godotenv.Load()
+	config.InitDB()
+
+	var surat []models.Surat
+	query := config.DB.Order("created_at DESC").Preload("User").Preload("Processor")
+	if err := query.Find(&surat).Error; err != nil {
+		log.Fatal(err)
+	}
+
+	for _, s := range surat {
+		if s.Status == "Selesai" {
+			data, _ := json.MarshalIndent(s, "", "  ")
+			fmt.Printf("Selesai Item: %s\n", string(data))
+		}
+	}
+}
