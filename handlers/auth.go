@@ -147,6 +147,9 @@ func Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal membuat token"})
 	}
 
+	// Record Login Log
+	RecordLog(user.IDUser, "Login Sistem", "Login ke sistem SIPA UNESA", "Berhasil", c.IP(), "")
+
 	return c.JSON(fiber.Map{
 		"status":  "success",
 		"message": "Login berhasil",

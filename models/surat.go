@@ -13,12 +13,16 @@ type Surat struct {
 	Keperluan   string    `gorm:"type:text" json:"keperluan"`
 	Semester    string    `gorm:"type:varchar(20)" json:"semester"`
 	Status      string    `gorm:"type:varchar(20);not null;default:'Diajukan'" json:"status"` // Diajukan, Diterima Tendik, Diproses, Selesai, Ditolak
-	FileUrl     string    `gorm:"type:varchar(255)" json:"file_url"`
+	FileUrl     string    `gorm:"type:text" json:"file_url"`
 	Komentar    string    `gorm:"type:text" json:"komentar"`
-	DeadlineSLA *time.Time `gorm:"type:timestamp null" json:"deadline_sla"`
-	SlaStatus   string    `gorm:"type:varchar(20);default:'Aman'" json:"sla_status"` // Aman, Mendekati, Terlampaui
-	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	DeadlineSLA        *time.Time `gorm:"type:timestamp null" json:"deadline_sla"`
+	SlaStatus          string     `gorm:"type:varchar(20);default:'Aman'" json:"sla_status"` // Aman, Mendekati, Terlampaui
+	Prioritas          string     `gorm:"type:varchar(20);default:'Normal'" json:"prioritas"` // Normal, Sedang, Tinggi
+	IsDocumentComplete bool       `gorm:"default:true" json:"is_document_complete"`
+	ProcessorID        *string    `gorm:"type:varchar(10)" json:"id_processor"`
+	Processor          *User      `gorm:"foreignKey:ProcessorID;references:IDUser" json:"processor"`
+	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Surat) TableName() string {

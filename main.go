@@ -22,7 +22,7 @@ func main() {
 	config.InitDB()
 
 	// Auto-migrate schema
-	config.DB.AutoMigrate(&models.User{}, &models.Surat{})
+	config.DB.AutoMigrate(&models.User{}, &models.Surat{}, &models.ActivityLog{}, &models.JenisSurat{}, &models.SystemSetting{})
 
 	app := fiber.New()
 
@@ -52,8 +52,29 @@ func main() {
 	// Surat routes
 	app.Post("/api/surat", handlers.AuthMiddleware, handlers.SubmitSurat)
 	app.Get("/api/surat", handlers.AuthMiddleware, handlers.GetHistorySurat)
+	app.Get("/api/surat/stats", handlers.AuthMiddleware, handlers.GetDashboardStats)
 	app.Get("/api/surat/:id", handlers.AuthMiddleware, handlers.GetDetailSurat)
 	app.Put("/api/surat/:id/status", handlers.AuthMiddleware, handlers.UpdateStatusSurat)
+
+	// File Upload
+	app.Post("/api/upload", handlers.AuthMiddleware, handlers.UploadFile)
+
+	// Activity Logs
+	app.Get("/api/logs", handlers.AuthMiddleware, handlers.GetActivityLogs)
+	app.Get("/api/logs/stats", handlers.AuthMiddleware, handlers.GetLogStats)
+
+	// Manajemen Jenis Surat
+	app.Get("/api/jenis-surat", handlers.AuthMiddleware, handlers.GetAllJenisSurat)
+	app.Post("/api/jenis-surat", handlers.AuthMiddleware, handlers.CreateJenisSurat)
+	app.Put("/api/jenis-surat/:id", handlers.AuthMiddleware, handlers.UpdateJenisSurat)
+	app.Delete("/api/jenis-surat/:id", handlers.AuthMiddleware, handlers.DeleteJenisSurat)
+
+	// System Settings
+	app.Get("/api/settings", handlers.AuthMiddleware, handlers.GetSystemSettings)
+	app.Put("/api/settings", handlers.AuthMiddleware, handlers.UpdateSystemSettings)
+
+	// Kaprodi
+	app.Get("/api/kaprodi/stats", handlers.AuthMiddleware, handlers.GetKaprodiStats)
 
 	port := os.Getenv("PORT")
 	if port == "" {
