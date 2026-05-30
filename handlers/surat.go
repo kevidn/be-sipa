@@ -38,10 +38,10 @@ func generateNomorSurat(jenis string) string {
 	}
 
 	year := time.Now().Format("2006")
-	
+
 	var count int64
 	config.DB.Model(&models.Surat{}).Where("nomor_surat LIKE ?", prefix+"-"+year+"-%").Count(&count)
-	
+
 	return fmt.Sprintf("%s-%s-%03d", prefix, year, count+1)
 }
 
@@ -83,13 +83,15 @@ func SubmitSurat(c *fiber.Ctx) error {
 	// Kirim email konfirmasi (REQ-FR019)
 	var user models.User
 	config.DB.Where("id_user = ?", userID).First(&user)
-	
+
 	utils.SendStatusUpdateEmail(user.Email, utils.MailData{
 		NamaLengkap: user.NamaLengkap,
 		NomorSurat:  newSurat.NomorSurat,
 		JenisSurat:  newSurat.JenisSurat,
 		Status:      "Diajukan",
 	})
+
+	CreateNotification(userID, "Surat Diajukan", fmt.Sprintf("%s %s telah berhasil diajukan dan menunggu verifikasi Tendik", newSurat.JenisSurat, newSurat.NomorSurat), "Process", "/dashboard/pengajuan")
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status":  "success",
@@ -103,7 +105,7 @@ func GetHistorySurat(c *fiber.Ctx) error {
 	role := c.Locals("role").(string)
 
 	var surat []models.Surat
-	
+
 	sortBy := c.Query("sort", "created_at")
 	order := c.Query("order", "desc")
 
@@ -137,7 +139,6 @@ func GetHistorySurat(c *fiber.Ctx) error {
 	if strings.ToLower(role) == "mahasiswa" {
 		query = query.Where("user_id = ?", userID)
 	}
-
 
 	if err := query.Find(&surat).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil data riwayat"})
@@ -202,8 +203,8 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 	}
 
 	type UpdateInput struct {
-		Status   string `json:"status"`
-		Catatan  string `json:"catatan"`
+		Status  string `json:"status"`
+		Catatan string `json:"catatan"`
 	}
 
 	var input UpdateInput
@@ -254,6 +255,26 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 		Catatan:     input.Catatan,
 	})
 
+	var notifType string
+	notifTitle := "Surat " + input.Status
+	switch input.Status {
+	case "Selesai":
+		notifType = "Success"
+	case "Ditolak":
+		notifType = "Error"
+	case "Diproses", "Diterima Tendik":
+		notifType = "Process"
+	default:
+		notifType = "Info"
+	}
+
+	notifMsg := fmt.Sprintf("%s %s saat ini berstatus: %s", surat.JenisSurat, surat.NomorSurat, input.Status)
+	if input.Status == "Ditolak" {
+		notifMsg = fmt.Sprintf("%s %s ditolak. Alasan: %s", surat.JenisSurat, surat.NomorSurat, input.Catatan)
+	}
+
+	CreateNotification(surat.UserID, notifTitle, notifMsg, notifType, fmt.Sprintf("/dashboard/pengajuan/%d", surat.ID))
+
 	return c.JSON(fiber.Map{
 		"status":  "success",
 		"message": "Status pengajuan berhasil diperbarui",
@@ -262,14 +283,15 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 }
 
 func GetDashboardStats(c *fiber.Ctx) error {
-	var totalAntrian, sedangDiproses, totalSelesai, slaTerlampaui, prioritasTinggi, dokumenLengkap int64
+	var totalAntrian, sedangDiproses, totalSelesai, prioritasTinggi, dokumenLengkap int64
 
 	config.DB.Model(&models.Surat{}).Where("status = ?", "Diajukan").Count(&totalAntrian)
 	config.DB.Model(&models.Surat{}).Where("status IN ?", []string{"Diterima Tendik", "Diproses"}).Count(&sedangDiproses)
-	
+
 	config.DB.Model(&models.Surat{}).Where("status = ?", "Selesai").Count(&totalSelesai)
-	
-	config.DB.Model(&models.Surat{}).Where("sla_status = ? AND status NOT IN ('Selesai', 'Ditolak')", "Terlampaui").Count(&slaTerlampaui)
+
+	var slaTerlampauiList []models.Surat
+	config.DB.Preload("User").Where("sla_status = ? AND status NOT IN ('Selesai', 'Ditolak')", "Terlampaui").Find(&slaTerlampauiList)
 
 	config.DB.Model(&models.Surat{}).Where("prioritas = ? AND status NOT IN ('Selesai', 'Ditolak')", "Tinggi").Count(&prioritasTinggi)
 	config.DB.Model(&models.Surat{}).Where("is_document_complete = ? AND status NOT IN ('Selesai', 'Ditolak')", true).Count(&dokumenLengkap)
@@ -277,15 +299,13 @@ func GetDashboardStats(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"total_antrian":    totalAntrian,
-			"sedang_diproses":  sedangDiproses,
-			"total_selesai":    totalSelesai,
-			"sla_terlampaui":   slaTerlampaui,
-			"prioritas_tinggi": prioritasTinggi,
-			"dokumen_lengkap":  dokumenLengkap,
+			"total_antrian":       totalAntrian,
+			"sedang_diproses":     sedangDiproses,
+			"total_selesai":       totalSelesai,
+			"sla_terlampaui":      int64(len(slaTerlampauiList)),
+			"sla_terlampaui_list": slaTerlampauiList,
+			"prioritas_tinggi":    prioritasTinggi,
+			"dokumen_lengkap":     dokumenLengkap,
 		},
 	})
 }
-
-
-
