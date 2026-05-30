@@ -22,7 +22,7 @@ func main() {
 	config.InitDB()
 
 	// Auto-migrate schema
-	config.DB.AutoMigrate(&models.User{}, &models.Surat{}, &models.ActivityLog{}, &models.JenisSurat{}, &models.SystemSetting{})
+	config.DB.AutoMigrate(&models.User{}, &models.Surat{}, &models.ActivityLog{}, &models.JenisSurat{}, &models.SystemSetting{}, &models.Notification{})
 
 	app := fiber.New()
 
@@ -72,6 +72,12 @@ func main() {
 	// System Settings
 	app.Get("/api/settings", handlers.AuthMiddleware, handlers.GetSystemSettings)
 	app.Put("/api/settings", handlers.AuthMiddleware, handlers.UpdateSystemSettings)
+
+	// Notifications
+	app.Get("/api/notifications", handlers.AuthMiddleware, handlers.GetNotifications)
+	app.Put("/api/notifications/read-all", handlers.AuthMiddleware, handlers.MarkAllAsRead)
+	app.Put("/api/notifications/:id/read", handlers.AuthMiddleware, handlers.MarkAsRead)
+	app.Delete("/api/notifications/:id", handlers.AuthMiddleware, handlers.DeleteNotification)
 
 	// Kaprodi
 	app.Get("/api/kaprodi/stats", handlers.AuthMiddleware, handlers.GetKaprodiStats)
