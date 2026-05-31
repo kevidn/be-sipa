@@ -30,12 +30,13 @@ var RoleValid = map[string]bool{
 }
 
 type RegisterInput struct {
-	NamaLengkap string `json:"nama_lengkap"`
-	Email       string `json:"email"`
-	Username    string `json:"username"`
-	PhoneNumber string `json:"phone_number"`
-	Role        string `json:"role"`
-	Password    string `json:"password"`
+	NamaLengkap  string `json:"nama_lengkap"`
+	Email        string `json:"email"`
+	Username     string `json:"username"`
+	PhoneNumber  string `json:"phone_number"`
+	Role         string `json:"role"`
+	Password     string `json:"password"`
+	ProgramStudi string `json:"program_studi"`
 }
 
 func generateUserID() string {
@@ -65,6 +66,7 @@ func Register(c *fiber.Ctx) error {
 		Email:        input.Email,
 		Role:         input.Role,
 		PhoneNumber:  input.PhoneNumber,
+		ProgramStudi: input.ProgramStudi,
 		StatusAkun:   "Aktif",
 	}
 
