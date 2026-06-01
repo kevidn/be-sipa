@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/kevidn/be-sipa/config"
 	"github.com/kevidn/be-sipa/models"
@@ -8,9 +11,9 @@ import (
 
 func GetAllJenisSurat(c *fiber.Ctx) error {
 	var list []models.JenisSurat
-	// Subquery to get count from surat_pengajuan table
-	config.DB.Select("jenis_surat.*, (SELECT COUNT(*) FROM surat_pengajuan WHERE surat_pengajuan.jenis_surat = jenis_surat.nama) as total_pengajuan").
-		Order("id ASC").Find(&list)
+	if err := config.DB.Order("id ASC").Find(&list).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
 	return c.JSON(fiber.Map{"status": "success", "data": list})
 }
 
@@ -18,6 +21,10 @@ func CreateJenisSurat(c *fiber.Ctx) error {
 	var input models.JenisSurat
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
+	}
+
+	if input.Kode == "" {
+		input.Kode = fmt.Sprintf("JS-%d", time.Now().Unix())
 	}
 
 	if err := config.DB.Create(&input).Error; err != nil {

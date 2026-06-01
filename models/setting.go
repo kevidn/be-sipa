@@ -15,6 +15,9 @@ type SystemSetting struct {
 	SessionTimeoutMin int       `gorm:"default:30" json:"session_timeout_min"`
 	SMTPServer        string    `gorm:"type:varchar(255);default:'smtp.unesa.ac.id'" json:"smtp_server"`
 	SMTPPort          int       `gorm:"default:587" json:"smtp_port"`
+	SMTPUsername      string    `gorm:"type:varchar(255)" json:"smtp_username"`
+	SMTPPassword      string    `gorm:"type:varchar(255)" json:"smtp_password"`
+	MaxLoginAttempts  int       `gorm:"default:5" json:"max_login_attempts"`
 	UpdatedAt         time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 

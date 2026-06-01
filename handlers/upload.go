@@ -12,6 +12,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/kevidn/be-sipa/config"
+	"github.com/kevidn/be-sipa/models"
 )
 
 func UploadFile(c *fiber.Ctx) error {
@@ -21,9 +23,17 @@ func UploadFile(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Gagal membaca file upload"})
 	}
 
-	// Validate file size (Max 5MB)
-	if fileHeader.Size > 5*1024*1024 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Ukuran file terlalu besar. Maksimal 5MB"})
+	// Fetch MaxFileUploadMB from DB
+	var setting models.SystemSetting
+	config.DB.First(&setting, 1)
+	maxMB := setting.MaxFileUploadMB
+	if maxMB <= 0 {
+		maxMB = 5 // Fallback
+	}
+
+	// Validate file size
+	if fileHeader.Size > int64(maxMB)*1024*1024 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Ukuran file terlalu besar. Maksimal %dMB", maxMB)})
 	}
 
 	// Validate file extension

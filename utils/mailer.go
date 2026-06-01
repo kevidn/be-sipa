@@ -3,9 +3,13 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/smtp"
-	"os"
 	"text/template"
+
+	"github.com/kevidn/be-sipa/config"
+	"github.com/kevidn/be-sipa/models"
+	"gopkg.in/gomail.v2"
 )
 
 type MailData struct {
@@ -18,10 +22,24 @@ type MailData struct {
 }
 
 func SendStatusUpdateEmail(toEmail string, data MailData) error {
-	smtpHost := os.Getenv("SMTP_HOST")
-	smtpPort := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
+	var setting models.SystemSetting
+	if err := config.DB.First(&setting, 1).Error; err != nil {
+		return fmt.Errorf("gagal memuat pengaturan sistem: %v", err)
+	}
+
+	if !setting.EmailNotification {
+		return nil // Notifikasi email dimatikan, tidak perlu error
+	}
+
+	smtpHost := setting.SMTPServer
+	smtpPort := fmt.Sprintf("%d", setting.SMTPPort)
+	smtpUser := setting.SMTPUsername
+	smtpPass := setting.SMTPPassword
+	
+	if smtpHost == "" || smtpUser == "" {
+		return fmt.Errorf("konfigurasi SMTP belum diatur di sistem")
+	}
+
 	from := fmt.Sprintf("SIPA UNESA <%s>", smtpUser)
 
 	subject := fmt.Sprintf("Update Status Pengajuan [%s] - %s", data.NomorSurat, data.Status)
@@ -91,11 +109,106 @@ func SendStatusUpdateEmail(toEmail string, data MailData) error {
 	return nil
 }
 
+// SendEmailWithKitir sends a status update email and attaches a PDF file from bytes.
+func SendEmailWithKitir(toEmail string, data MailData, pdfAttachment []byte) error {
+	var setting models.SystemSetting
+	if err := config.DB.First(&setting, 1).Error; err != nil {
+		return fmt.Errorf("gagal memuat pengaturan sistem: %v", err)
+	}
+
+	if !setting.EmailNotification {
+		return nil
+	}
+
+	if setting.SMTPServer == "" || setting.SMTPUsername == "" {
+		return fmt.Errorf("konfigurasi SMTP belum diatur di sistem")
+	}
+
+	m := gomail.NewMessage()
+	m.SetHeader("From", fmt.Sprintf("SIPA UNESA <%s>", setting.SMTPUsername))
+	m.SetHeader("To", toEmail)
+	m.SetHeader("Subject", fmt.Sprintf("Bukti Pengajuan [%s] - SIPA UNESA", data.NomorSurat))
+
+	htmlTemplate := `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: sans-serif; background-color: #f4f3ee; color: #1a2a24; }
+        .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 16px; padding: 40px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .header { border-bottom: 2px solid #5a7a6e; padding-bottom: 20px; margin-bottom: 30px; }
+        .footer { margin-top: 40px; font-size: 12px; color: #8a9e96; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2 style="color: #5a7a6e; margin: 0;">Pengajuan Surat Berhasil</h2>
+        </div>
+        <p>Halo, <strong>{{.NamaLengkap}}</strong>,</p>
+        <p>Pengajuan surat Anda telah kami terima dengan detail berikut:</p>
+        
+        <div style="background: #f9f8f4; padding: 20px; border-radius: 12px; margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>Nomor:</strong> {{.NomorSurat}}</p>
+            <p style="margin: 5px 0;"><strong>Jenis:</strong> {{.JenisSurat}}</p>
+        </div>
+
+        <p>Terlampir adalah bukti pengajuan digital (Kitir) Anda dalam bentuk PDF. Harap simpan bukti ini dengan baik.</p>
+        
+        <div class="footer">
+            &copy; 2024 UNIVERSITAS NEGERI SURABAYA<br>
+            Sistem Informasi Pelayanan Akademik
+        </div>
+    </div>
+</body>
+</html>
+`
+	t, err := template.New("kitirMail").Parse(htmlTemplate)
+	if err != nil {
+		return err
+	}
+
+	var body bytes.Buffer
+	err = t.Execute(&body, data)
+	if err != nil {
+		return err
+	}
+
+	m.SetBody("text/html", body.String())
+
+	// Attach PDF from memory
+	m.Attach(fmt.Sprintf("Kitir_%s.pdf", data.NomorSurat), gomail.SetCopyFunc(func(w io.Writer) error {
+		_, err := w.Write(pdfAttachment)
+		return err
+	}))
+
+	d := gomail.NewDialer(setting.SMTPServer, setting.SMTPPort, setting.SMTPUsername, setting.SMTPPassword)
+
+	if err := d.DialAndSend(m); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func SendResetPasswordEmail(toEmail string, data MailData) error {
-	smtpHost := os.Getenv("SMTP_HOST")
-	smtpPort := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
+	var setting models.SystemSetting
+	if err := config.DB.First(&setting, 1).Error; err != nil {
+		return fmt.Errorf("gagal memuat pengaturan sistem: %v", err)
+	}
+
+	// Email reset password tetap dikirim walau notifikasi dimatikan, karena penting.
+	
+	smtpHost := setting.SMTPServer
+	smtpPort := fmt.Sprintf("%d", setting.SMTPPort)
+	smtpUser := setting.SMTPUsername
+	smtpPass := setting.SMTPPassword
+	
+	if smtpHost == "" || smtpUser == "" {
+		return fmt.Errorf("konfigurasi SMTP belum diatur di sistem")
+	}
+
 	from := fmt.Sprintf("SIPA UNESA <%s>", smtpUser)
 
 	subject := "Reset Kata Sandi - SIPA UNESA"
@@ -167,4 +280,56 @@ func SendResetPasswordEmail(toEmail string, data MailData) error {
 	}
 
 	return nil
+}
+
+func SendSLAWarningEmail(toEmail string, namaTendik string, nomorSurat string, sisaHari int) error {
+	var setting models.SystemSetting
+	if err := config.DB.First(&setting, 1).Error; err != nil {
+		return err
+	}
+	if !setting.EmailNotification {
+		return nil
+	}
+	m := gomail.NewMessage()
+	m.SetHeader("From", fmt.Sprintf("SIPA UNESA <%s>", setting.SMTPUsername))
+	m.SetHeader("To", toEmail)
+	m.SetHeader("Subject", fmt.Sprintf("[Penting] Peringatan SLA Surat %s", nomorSurat))
+
+	htmlContent := fmt.Sprintf(`
+		<p>Halo <b>%s</b>,</p>
+		<p>Terdapat pengajuan surat yang akan segera melewati batas waktu (SLA):</p>
+		<p>Nomor Surat: <b>%s</b></p>
+		<p>Sisa waktu efektif: <b>%d jam/hari</b></p>
+		<p>Mohon segera memproses surat tersebut agar tidak terjadi keterlambatan pelayanan.</p>
+	`, namaTendik, nomorSurat, sisaHari)
+	m.SetBody("text/html", htmlContent)
+	d := gomail.NewDialer(setting.SMTPServer, setting.SMTPPort, setting.SMTPUsername, setting.SMTPPassword)
+	return d.DialAndSend(m)
+}
+
+func SendSLAEscalationEmail(toEmail string, namaKaprodi string, nomorSurat string, namaTendik string) error {
+	var setting models.SystemSetting
+	if err := config.DB.First(&setting, 1).Error; err != nil {
+		return err
+	}
+	if !setting.EmailNotification {
+		return nil
+	}
+	m := gomail.NewMessage()
+	m.SetHeader("From", fmt.Sprintf("SIPA UNESA <%s>", setting.SMTPUsername))
+	m.SetHeader("To", toEmail)
+	m.SetHeader("Subject", fmt.Sprintf("[Eskalasi] Pelanggaran SLA Surat %s", nomorSurat))
+
+	htmlContent := fmt.Sprintf(`
+		<p>Yth. <b>%s</b>,</p>
+		<p>Sistem mendeteksi bahwa pengajuan surat berikut telah melebihi batas waktu pelayanan yang ditetapkan (SLA Terlampaui):</p>
+		<ul>
+			<li>Nomor Surat: <b>%s</b></li>
+			<li>Diproses oleh: <b>%s</b></li>
+		</ul>
+		<p>Mohon tindak lanjut dari Anda selaku Kepala Program Studi.</p>
+	`, namaKaprodi, nomorSurat, namaTendik)
+	m.SetBody("text/html", htmlContent)
+	d := gomail.NewDialer(setting.SMTPServer, setting.SMTPPort, setting.SMTPUsername, setting.SMTPPassword)
+	return d.DialAndSend(m)
 }
