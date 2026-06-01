@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/kevidn/be-sipa/config"
+	"github.com/kevidn/be-sipa/cron"
 	"github.com/kevidn/be-sipa/handlers"
 	"github.com/kevidn/be-sipa/models"
 
@@ -21,8 +22,11 @@ func main() {
 
 	config.InitDB()
 
+	// Mulai scheduler background
+	cron.InitScheduler()
+
 	// Auto-migrate schema
-	config.DB.AutoMigrate(&models.User{}, &models.Surat{}, &models.ActivityLog{}, &models.JenisSurat{}, &models.SystemSetting{}, &models.Notification{})
+	config.DB.AutoMigrate(&models.User{}, &models.Surat{}, &models.ActivityLog{}, &models.JenisSurat{}, &models.SystemSetting{}, &models.Notification{}, &models.HariLibur{})
 
 	app := fiber.New()
 
@@ -72,6 +76,17 @@ func main() {
 	// System Settings
 	app.Get("/api/settings", handlers.AuthMiddleware, handlers.GetSystemSettings)
 	app.Put("/api/settings", handlers.AuthMiddleware, handlers.UpdateSystemSettings)
+
+	// Admin routes
+	app.Get("/api/admin/dashboard", handlers.AuthMiddleware, handlers.GetAdminDashboardStats)
+	app.Get("/api/hari-libur", handlers.AuthMiddleware, handlers.GetAllHariLibur)
+	app.Post("/api/hari-libur", handlers.AuthMiddleware, handlers.CreateHariLibur)
+	app.Delete("/api/hari-libur/:id", handlers.AuthMiddleware, handlers.DeleteHariLibur)
+
+	app.Get("/api/users", handlers.AuthMiddleware, handlers.GetAllUsers)
+	app.Post("/api/users", handlers.AuthMiddleware, handlers.CreateUser)
+	app.Put("/api/users/:id", handlers.AuthMiddleware, handlers.UpdateUser)
+	app.Delete("/api/users/:id", handlers.AuthMiddleware, handlers.DeleteUser)
 
 	// Notifications
 	app.Get("/api/notifications", handlers.AuthMiddleware, handlers.GetNotifications)

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,30 +19,50 @@ type SuratInput struct {
 	FileUrl    string `json:"file_url"`
 }
 
-func generateNomorSurat(jenis string) string {
-	var prefix string
-	switch jenis {
-	case "Surat Keterangan Masih Kuliah":
-		prefix = "SKM"
-	case "Surat Ijin Survei Penelitian (Skripsi)":
-		prefix = "SKRIPSI"
-	case "Surat Tunjangan/Pensiun/Akses":
-		prefix = "TPA"
-	case "Surat Keterangan Tidak Menerima Beasiswa":
-		prefix = "SKTB"
-	case "Surat Rekomendasi Beasiswa":
-		prefix = "BEA"
-	case "Surat Keterangan Kelakuan Baik":
-		prefix = "SKKB"
-	default:
-		prefix = "SRT"
+func generateNomorSurat(jenisSurat models.JenisSurat) string {
+	sifat := jenisSurat.KodeSifat
+	if sifat == "" {
+		sifat = "B" // Default Biasa
 	}
 
+	klasifikasi := jenisSurat.KodeKlasifikasi
+	if klasifikasi == "" {
+		klasifikasi = "KM" // Default Kemahasiswaan
+	}
+
+	unit := "UN38.9" // Statis untuk Fakultas Teknik UNESA
 	year := time.Now().Format("2006")
 
 	var count int64
-	config.DB.Model(&models.Surat{}).Where("nomor_surat LIKE ?", prefix+"-"+year+"-%").Count(&count)
+	// Format surat: [Sifat]/[Urut]/[Unit]/[Klasifikasi]/[Tahun]
+	// Cari urutan berdasarkan tahun berjalan, unit, dan klasifikasi
+	config.DB.Model(&models.Surat{}).Where("nomor_surat LIKE ?", "%/"+unit+"/"+klasifikasi+"/"+year).Count(&count)
 
+	return fmt.Sprintf("%s/%03d/%s/%s/%s", sifat, count+1, unit, klasifikasi, year)
+}
+
+func generateKitirNumber(jenisSurat string) string {
+	var prefix string
+	switch jenisSurat {
+	case "Surat Keterangan Tidak Menerima Beasiswa":
+		prefix = "SKTB"
+	case "Surat Keterangan Kelakuan Baik":
+		prefix = "SKKB"
+	case "Surat Ijin Survei Penelitian (Skripsi)":
+		prefix = "SKRIPSI"
+	case "Surat Rekomendasi Beasiswa":
+		prefix = "BEA"
+	case "Surat Keterangan Masih Kuliah":
+		prefix = "SKM"
+	default:
+		prefix = "SIPA"
+	}
+	
+	year := time.Now().Format("2006")
+	
+	var count int64
+	config.DB.Model(&models.Surat{}).Where("nomor_surat LIKE ?", prefix+"-"+year+"-%").Count(&count)
+	
 	return fmt.Sprintf("%s-%s-%03d", prefix, year, count+1)
 }
 
@@ -63,10 +84,11 @@ func SubmitSurat(c *fiber.Ctx) error {
 	// Hitung Deadline SLA (BR-002, BR-003, BR-004)
 	slaDays := utils.GetSLADays(input.JenisSurat)
 	deadline := utils.CalculateDeadline(time.Now(), slaDays)
+	
+	nomorSurat := generateKitirNumber(input.JenisSurat)
 
 	newSurat := models.Surat{
 		UserID:      userID,
-		NomorSurat:  generateNomorSurat(input.JenisSurat),
 		JenisSurat:  input.JenisSurat,
 		Keperluan:   input.Keperluan,
 		Semester:    input.Semester,
@@ -74,24 +96,44 @@ func SubmitSurat(c *fiber.Ctx) error {
 		Status:      "Diajukan",
 		DeadlineSLA: &deadline,
 		SlaStatus:   "Aman",
+		NomorSurat:  nomorSurat,
 	}
 
 	if err := config.DB.Create(&newSurat).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan pengajuan"})
 	}
 
-	// Kirim email konfirmasi (REQ-FR019)
+	// Kirim email konfirmasi (REQ-FR019) dengan lampiran PDF Kitir
 	var user models.User
 	config.DB.Where("id_user = ?", userID).First(&user)
 
-	utils.SendStatusUpdateEmail(user.Email, utils.MailData{
-		NamaLengkap: user.NamaLengkap,
+	kitirData := utils.KitirData{
 		NomorSurat:  newSurat.NomorSurat,
+		NamaLengkap: user.NamaLengkap,
+		NIM:         user.NIM,
 		JenisSurat:  newSurat.JenisSurat,
-		Status:      "Diajukan",
-	})
+		Tanggal:     time.Now(),
+	}
 
-	CreateNotification(userID, "Surat Diajukan", fmt.Sprintf("%s %s telah berhasil diajukan dan menunggu verifikasi Tendik", newSurat.JenisSurat, newSurat.NomorSurat), "Process", "/dashboard/pengajuan")
+	pdfBytes, errPDF := utils.GenerateKitirPDF(kitirData)
+	if errPDF == nil {
+		utils.SendEmailWithKitir(user.Email, utils.MailData{
+			NamaLengkap: user.NamaLengkap,
+			NomorSurat:  newSurat.NomorSurat,
+			JenisSurat:  newSurat.JenisSurat,
+			Status:      "Diajukan",
+		}, pdfBytes)
+	} else {
+		// Fallback ke email tanpa lampiran
+		utils.SendStatusUpdateEmail(user.Email, utils.MailData{
+			NamaLengkap: user.NamaLengkap,
+			NomorSurat:  newSurat.NomorSurat,
+			JenisSurat:  newSurat.JenisSurat,
+			Status:      "Diajukan",
+		})
+	}
+
+	CreateNotification(userID, "Surat Diajukan", fmt.Sprintf("%s %s telah berhasil diajukan dan menunggu verifikasi Tendik", newSurat.JenisSurat, newSurat.NomorSurat), "Process", "/pengajuan")
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status":  "success",
@@ -129,18 +171,46 @@ func GetHistorySurat(c *fiber.Ctx) error {
 		dbSortCol = "surat_pengajuan.prioritas"
 	}
 
-	query := config.DB.Preload("User").Preload("Processor")
-	if sortBy == "mahasiswa" {
-		query = query.Joins("User").Order("User.nama_lengkap " + order)
-	} else {
-		query = query.Order(dbSortCol + " " + order)
-	}
+	query := config.DB.Model(&models.Surat{})
 	// Jika mahasiswa, hanya lihat miliknya sendiri (BR-006)
 	if strings.ToLower(role) == "mahasiswa" {
 		query = query.Where("user_id = ?", userID)
 	}
 
-	if err := query.Find(&surat).Error; err != nil {
+	search := c.Query("search", "")
+	jenis := c.Query("jenis", "")
+	status := c.Query("status", "")
+
+	if search != "" {
+		query = query.Where("nomor_surat ILIKE ?", "%"+search+"%")
+	}
+	if jenis != "" && jenis != "Semua Jenis Surat" {
+		query = query.Where("jenis_surat = ?", jenis)
+	}
+	if status != "" && status != "Semua Status" {
+		query = query.Where("status = ?", status)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	pageStr := c.Query("page", "1")
+	limitStr := c.Query("limit", "10")
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
+
+	if page < 1 { page = 1 }
+	if limit < 1 { limit = 10 }
+	offset := (page - 1) * limit
+
+	query = query.Preload("User").Preload("Processor")
+	if sortBy == "mahasiswa" {
+		query = query.Joins("User").Order("User.nama_lengkap " + order)
+	} else {
+		query = query.Order(dbSortCol + " " + order)
+	}
+
+	if err := query.Offset(offset).Limit(limit).Find(&surat).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil data riwayat"})
 	}
 
@@ -164,9 +234,20 @@ func GetHistorySurat(c *fiber.Ctx) error {
 		}
 	}
 
+	lastPage := 1
+	if limit > 0 {
+		lastPage = int(total) / limit
+		if int(total)%limit > 0 {
+			lastPage++
+		}
+	}
+
 	return c.JSON(fiber.Map{
-		"status": "success",
-		"data":   surat,
+		"status":    "success",
+		"data":      surat,
+		"total":     total,
+		"page":      page,
+		"last_page": lastPage,
 	})
 }
 
@@ -222,9 +303,30 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Pengajuan tidak ditemukan"})
 	}
 
-	// BR-009: Pengajuan berstatus 'Selesai' tidak dapat diubah statusnya kembali
-	if surat.Status == "Selesai" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Pengajuan yang sudah Selesai tidak dapat diubah lagi"})
+	// BR-008: Pengajuan berstatus final (Selesai/Ditolak) tidak dapat diubah lagi
+	if surat.Status == "Selesai" || surat.Status == "Ditolak" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Pengajuan dengan status final tidak dapat diubah lagi"})
+	}
+
+	// State Machine Verification
+	isValidTransition := false
+	switch surat.Status {
+	case "Diajukan":
+		if input.Status == "Diterima Tendik" || input.Status == "Ditolak" {
+			isValidTransition = true
+		}
+	case "Diterima Tendik":
+		if input.Status == "Diproses" {
+			isValidTransition = true
+		}
+	case "Diproses", "SLA Terlampaui":
+		if input.Status == "Selesai" || input.Status == "Ditolak" {
+			isValidTransition = true
+		}
+	}
+
+	if !isValidTransition {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Transisi status dari '%s' ke '%s' tidak valid", surat.Status, input.Status)})
 	}
 
 	// Update Status, Komentar, & Processor
@@ -233,6 +335,21 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 		"status":       input.Status,
 		"komentar":     input.Catatan,
 		"processor_id": processorID,
+	}
+
+	if input.Status == "Selesai" {
+		now := time.Now()
+		updates["tanggal_selesai"] = &now
+	}
+
+	// Generate Nomor Surat (Penomoran Surat Flowchart)
+	if surat.NomorSurat == "" && input.Status != "Ditolak" && input.Status != "Diajukan" {
+		var js models.JenisSurat
+		if err := config.DB.Where("nama = ?", surat.JenisSurat).First(&js).Error; err == nil {
+			newNomor := generateNomorSurat(js)
+			updates["nomor_surat"] = newNomor
+			surat.NomorSurat = newNomor // Update lokal untuk email notifikasi di bawah
+		}
 	}
 
 	if err := config.DB.Model(&surat).Updates(updates).Error; err != nil {
@@ -273,7 +390,7 @@ func UpdateStatusSurat(c *fiber.Ctx) error {
 		notifMsg = fmt.Sprintf("%s %s ditolak. Alasan: %s", surat.JenisSurat, surat.NomorSurat, input.Catatan)
 	}
 
-	CreateNotification(surat.UserID, notifTitle, notifMsg, notifType, fmt.Sprintf("/dashboard/pengajuan/%d", surat.ID))
+	CreateNotification(surat.UserID, notifTitle, notifMsg, notifType, fmt.Sprintf("/pengajuan/%d", surat.ID))
 
 	return c.JSON(fiber.Map{
 		"status":  "success",

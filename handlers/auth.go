@@ -33,6 +33,7 @@ type RegisterInput struct {
 	NamaLengkap  string `json:"nama_lengkap"`
 	Email        string `json:"email"`
 	Username     string `json:"username"`
+	NIM          string `json:"nim"`
 	PhoneNumber  string `json:"phone_number"`
 	Role         string `json:"role"`
 	Password     string `json:"password"`
@@ -64,6 +65,7 @@ func Register(c *fiber.Ctx) error {
 		PasswordHash: string(hashedPassword),
 		NamaLengkap:  input.NamaLengkap,
 		Email:        input.Email,
+		NIM:          input.NIM,
 		Role:         input.Role,
 		PhoneNumber:  input.PhoneNumber,
 		ProgramStudi: input.ProgramStudi,
@@ -130,11 +132,19 @@ func Login(c *fiber.Ctx) error {
 	user.LastLogin = &now
 	config.DB.Save(&user)
 
+	// Fetch SessionTimeoutMin from DB
+	var setting models.SystemSetting
+	config.DB.First(&setting, 1) // ID 1 is the global setting
+	timeoutMinutes := setting.SessionTimeoutMin
+	if timeoutMinutes <= 0 {
+		timeoutMinutes = 24 * 60 // Fallback to 24 hours if not set properly
+	}
+
 	claims := jwt.MapClaims{
 		"id_user":        user.IDUser,
 		"role":           user.Role,
 		"is_sla_monitor": user.IsSlaMonitor,
-		"exp":            time.Now().Add(time.Hour * 24).Unix(),
+		"exp":            time.Now().Add(time.Duration(timeoutMinutes) * time.Minute).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
