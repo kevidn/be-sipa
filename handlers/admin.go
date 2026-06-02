@@ -13,6 +13,7 @@ import (
 
 func GetAdminDashboardStats(c *fiber.Ctx) error {
 	var totalJenisSurat int64
+	var totalPengajuan int64
 	var suratAktif int64
 	var totalHariLibur int64
 	var totalPengguna int64
@@ -20,6 +21,9 @@ func GetAdminDashboardStats(c *fiber.Ctx) error {
 
 	// Count Total Jenis Surat
 	config.DB.Model(&models.JenisSurat{}).Count(&totalJenisSurat)
+
+	// Count Total Pengajuan
+	config.DB.Model(&models.Surat{}).Count(&totalPengajuan)
 
 	// Count Surat Aktif
 	config.DB.Model(&models.JenisSurat{}).Where("status = ?", "Aktif").Count(&suratAktif)
@@ -62,6 +66,7 @@ func GetAdminDashboardStats(c *fiber.Ctx) error {
 		"status": "success",
 		"data": fiber.Map{
 			"total_jenis_surat": totalJenisSurat,
+			"total_pengajuan":   totalPengajuan,
 			"surat_aktif":       suratAktif,
 			"total_hari_libur":  totalHariLibur,
 			"avg_sla":           fmt.Sprintf("%.1f", avgSla),
