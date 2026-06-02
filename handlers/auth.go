@@ -93,7 +93,7 @@ func Login(c *fiber.Ctx) error {
 	var user models.User
 	result := config.DB.Where("username = ?", input.Username).First(&user)
 	if result.Error != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Username tidak ditemukan"})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "NIM/Email tidak ditemukan"})
 	}
 
 	// Check if account is locked
