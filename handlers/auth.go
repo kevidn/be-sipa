@@ -122,7 +122,7 @@ func Login(c *fiber.Ctx) error {
 		}
 		
 		config.DB.Save(&user)
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Password salah!"})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("email/NIM atau password salah, percobaan %d/5", user.FailedLoginAttempts)})
 	}
 
 	// Reset failed attempts on successful login
